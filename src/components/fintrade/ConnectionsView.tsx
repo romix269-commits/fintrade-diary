@@ -41,7 +41,6 @@ export default function ConnectionsView({
   const [proxyUrl, setProxyUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
-  const [passphrase, setPassphrase] = useState("");
   const [isTestnet, setIsTestnet] = useState(false);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -53,7 +52,10 @@ export default function ConnectionsView({
   }, []);
 
   const exchangeOptions = useMemo(
-    () => EXCHANGES.filter((exchange) => exchange.id !== "kucoin"),
+    () =>
+      EXCHANGES.filter(
+        (exchange) => exchange.id === "bybit" || exchange.id === "binance"
+      ),
     []
   );
 
@@ -73,7 +75,6 @@ export default function ConnectionsView({
     setProxyUrl("");
     setApiKey("");
     setApiSecret("");
-    setPassphrase("");
     setIsTestnet(false);
     setEditingId(null);
     setSelectedExchange("bybit");
@@ -91,12 +92,15 @@ export default function ConnectionsView({
   };
 
   const handleEditConnection = (connection: ExchangeConnection) => {
-    setSelectedExchange(connection.exchange);
+    setSelectedExchange(
+      connection.exchange === "bybit" || connection.exchange === "binance"
+        ? connection.exchange
+        : "bybit"
+    );
     setConnectionName(connection.name || "");
     setProxyUrl(connection.proxyUrl || "");
     setApiKey(connection.apiKey || "");
     setApiSecret(connection.apiSecret || "");
-    setPassphrase(connection.passphrase || "");
     setIsTestnet(Boolean(connection.isTestnet));
     setEditingId(connection.id);
     setNotice(null);
@@ -110,16 +114,10 @@ export default function ConnectionsView({
     const trimmedName = connectionName.trim();
     const trimmedKey = apiKey.trim();
     const trimmedSecret = apiSecret.trim();
-    const trimmedPassphrase = passphrase.trim();
     const trimmedProxyUrl = proxyUrl.trim();
 
     if (!trimmedKey || !trimmedSecret) {
       showNotice("error", "Введите API Key и API Secret.");
-      return;
-    }
-
-    if (selectedExchange === "okx" && !trimmedPassphrase) {
-      showNotice("error", "Для OKX нужно указать Passphrase.");
       return;
     }
 
@@ -132,7 +130,6 @@ export default function ConnectionsView({
               name: trimmedName || exchangeMeta.name,
               apiKey: trimmedKey,
               apiSecret: trimmedSecret,
-              passphrase: selectedExchange === "okx" ? trimmedPassphrase : undefined,
               proxyUrl: trimmedProxyUrl || undefined,
               isTestnet,
               updatedAt: new Date().toISOString(),
@@ -148,8 +145,6 @@ export default function ConnectionsView({
       nextConnection.name = trimmedName || exchangeMeta.name;
       nextConnection.apiKey = trimmedKey;
       nextConnection.apiSecret = trimmedSecret;
-      nextConnection.passphrase =
-        selectedExchange === "okx" ? trimmedPassphrase : undefined;
       nextConnection.proxyUrl = trimmedProxyUrl || undefined;
       nextConnection.isTestnet = isTestnet;
 
@@ -456,7 +451,7 @@ export default function ConnectionsView({
             </button>
           </div>
 
-          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             {exchangeOptions.map((exchange) => {
               const active = selectedExchange === exchange.id;
 
@@ -518,17 +513,6 @@ export default function ConnectionsView({
                 type="password"
               />
             </Field>
-
-            {selectedExchange === "okx" && (
-              <Field label="Passphrase">
-                <input
-                  className="h-[46px] w-full rounded-[14px] border border-[rgba(56,189,248,.14)] bg-[#0a1424] px-4 text-white outline-none placeholder:text-[#6f8198]"
-                  value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder="Passphrase для OKX"
-                />
-              </Field>
-            )}
           </div>
 
           <div className="mt-4 flex flex-col items-start gap-3">
@@ -561,7 +545,7 @@ export default function ConnectionsView({
             <div className="mb-4 text-[64px] leading-none">🔗</div>
             <div className="text-[22px] font-bold text-white">Нет подключений</div>
             <div className="mt-3 text-[17px] text-[#8aa6c7]">
-              Подключите API ключи Binance, Bybit или OKX для автоматического импорта
+              Подключите API ключи Binance и Bybit для автоматического импорта
               сделок
             </div>
             <div className="mt-6">
@@ -816,4 +800,4 @@ function formatDateTime(value?: string) {
   } catch {
     return value;
   }
-}                                                                    
+}                                                               
