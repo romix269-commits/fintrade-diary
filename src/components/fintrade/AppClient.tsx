@@ -471,6 +471,69 @@ function resolveJournalDiaryId(
   return fallbackDiaryId;
 }
 
+type HydratedAppData = {
+  trades: Trade[];
+  journal: JournalNote[];
+  folders: JournalFolder[];
+  diaries: TradingDiary[];
+  activeDiaryId: string | null;
+  mode: AppMode;
+};
+
+function buildHydratedAppData(params: {
+  mode: AppMode;
+  trades: Trade[];
+  journal: JournalNote[];
+  folders: JournalFolder[];
+  diaries: TradingDiary[];
+  loadedActiveDiaryId: string | null;
+  connections: ExchangeConnection[];
+}): HydratedAppData {
+  let t = [...params.trades];
+  let j = [...params.journal];
+  let f = [...params.folders];
+  let loadedDiaries = [...params.diaries];
+
+  if (t.length === 0 && params.mode === "demo") {
+    t = getDemoTrades();
+    j = getDemoJournal();
+    f = getDemoJournalFolders();
+
+    if (!loadedDiaries.length) {
+      loadedDiaries = loadDiaries();
+    }
+  }
+
+  loadedDiaries = ensureDiariesCoverStoredData(loadedDiaries, t, j, params.connections);
+
+  const safeActiveDiaryId =
+    params.loadedActiveDiaryId && loadedDiaries.some((d) => d.id === params.loadedActiveDiaryId)
+      ? params.loadedActiveDiaryId
+      : loadedDiaries[0]?.id ?? null;
+
+  const fallbackDiaryId =
+    loadedDiaries[0]?.id ?? safeActiveDiaryId ?? createDefaultDiary().id;
+
+  const normalizedTrades = t.map((trade) => ({
+    ...trade,
+    diaryId: resolveTradeDiaryId(trade, loadedDiaries, fallbackDiaryId),
+  }));
+
+  const normalizedJournal = j.map((note) => ({
+    ...note,
+    diaryId: resolveJournalDiaryId(note, loadedDiaries, fallbackDiaryId),
+  }));
+
+  return {
+    trades: normalizedTrades,
+    journal: normalizedJournal,
+    folders: f,
+    diaries: loadedDiaries,
+    activeDiaryId: safeActiveDiaryId,
+    mode: params.mode,
+  };
+}
+
 export default function AppClient() {
   const [activeView, setActiveView] = useState<ViewId>("overview");
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -483,7 +546,6 @@ export default function AppClient() {
   const [diaries, setDiaries] = useState<TradingDiary[]>([]);
   const [activeDiaryId, setActiveDiaryId] = useState<string | null>(null);
   const [connectionsVersion, setConnectionsVersion] = useState(0);
-  const [isBootstrapping, setIsBootstrapping] = useState(true);
 
   const [isRenameDiaryModalOpen, setIsRenameDiaryModalOpen] = useState(false);
   const [renameDiaryValue, setRenameDiaryValue] = useState("");
@@ -549,94 +611,76 @@ export default function AppClient() {
   useEffect(() => {
     let mounted = true;
 
-    const init = async () => {
+    const mode = getSavedMode();
+    setAppMode(mode);
+
+    const connections = loadConnections();
+
+    const localHydrated = buildHydratedAppData({
+      mode,
+      trades: loadTrades(),
+      journal: loadJournal(),
+      folders: loadJournalFolders(),
+      diaries: loadDiaries(),
+      loadedActiveDiaryId: loadActiveDiaryId(),
+      connections,
+    });
+
+    saveTrades(localHydrated.trades);
+    saveJournal(localHydrated.journal);
+    saveJournalFolders(localHydrated.folders);
+    saveDiaries(localHydrated.diaries);
+    if (localHydrated.activeDiaryId) {
+      saveActiveDiaryId(localHydrated.activeDiaryId);
+    }
+
+    setTrades(localHydrated.trades);
+    setJournal(localHydrated.journal);
+    setJournalFolders(localHydrated.folders);
+    setDiaries(localHydrated.diaries);
+    setActiveDiaryId(localHydrated.activeDiaryId);
+
+    const syncFromSupabase = async () => {
       try {
-        const mode = getSavedMode();
-        if (!mounted) return;
-        setAppMode(mode);
-
-        const connections = loadConnections();
-
-        let t: Trade[] = [];
-        let j: JournalNote[] = [];
-        let f: JournalFolder[] = [];
-        let loadedDiaries: TradingDiary[] = [];
-
-        try {
-          const [supabaseTrades, supabaseJournal, supabaseFolders, supabaseDiaries] =
-            await Promise.all([
-              loadTradesFromSupabase(),
-              loadJournalFromSupabase(),
-              loadJournalFoldersFromSupabase(),
-              loadDiariesFromSupabase(),
-            ]);
-
-          t = supabaseTrades;
-          j = supabaseJournal;
-          f = supabaseFolders;
-          loadedDiaries = supabaseDiaries;
-        } catch (error) {
-          console.error("Ошибка загрузки данных из Supabase:", error);
-          t = loadTrades();
-          j = loadJournal();
-          f = loadJournalFolders();
-          loadedDiaries = loadDiaries();
-        }
-
-        if (t.length === 0 && mode === "demo") {
-          t = getDemoTrades();
-          j = getDemoJournal();
-          f = getDemoJournalFolders();
-
-          if (!loadedDiaries.length) {
-            loadedDiaries = loadDiaries();
-          }
-        }
-
-        loadedDiaries = ensureDiariesCoverStoredData(loadedDiaries, t, j, connections);
-
-        const loadedActiveDiaryId = loadActiveDiaryId();
-
-        const safeActiveDiaryId =
-          loadedActiveDiaryId && loadedDiaries.some((d) => d.id === loadedActiveDiaryId)
-            ? loadedActiveDiaryId
-            : loadedDiaries[0]?.id ?? null;
-
-        const fallbackDiaryId = loadedDiaries[0]?.id ?? safeActiveDiaryId ?? createDefaultDiary().id;
-
-        const normalizedTrades = t.map((trade) => ({
-          ...trade,
-          diaryId: resolveTradeDiaryId(trade, loadedDiaries, fallbackDiaryId),
-        }));
-
-        const normalizedJournal = j.map((note) => ({
-          ...note,
-          diaryId: resolveJournalDiaryId(note, loadedDiaries, fallbackDiaryId),
-        }));
-
-        saveTrades(normalizedTrades);
-        saveJournal(normalizedJournal);
-        saveJournalFolders(f);
-        saveDiaries(loadedDiaries);
-        if (safeActiveDiaryId) {
-          saveActiveDiaryId(safeActiveDiaryId);
-        }
+        const [supabaseTrades, supabaseJournal, supabaseFolders, supabaseDiaries] =
+          await Promise.all([
+            loadTradesFromSupabase(),
+            loadJournalFromSupabase(),
+            loadJournalFoldersFromSupabase(),
+            loadDiariesFromSupabase(),
+          ]);
 
         if (!mounted) return;
 
-        setTrades(normalizedTrades);
-        setJournal(normalizedJournal);
-        setJournalFolders(f);
-        setDiaries(loadedDiaries);
-        setActiveDiaryId(safeActiveDiaryId);
-      } finally {
-        if (mounted) {
-          setIsBootstrapping(false);
+        const supabaseHydrated = buildHydratedAppData({
+          mode,
+          trades: supabaseTrades,
+          journal: supabaseJournal,
+          folders: supabaseFolders,
+          diaries: supabaseDiaries,
+          loadedActiveDiaryId: loadActiveDiaryId(),
+          connections,
+        });
+
+        saveTrades(supabaseHydrated.trades);
+        saveJournal(supabaseHydrated.journal);
+        saveJournalFolders(supabaseHydrated.folders);
+        saveDiaries(supabaseHydrated.diaries);
+        if (supabaseHydrated.activeDiaryId) {
+          saveActiveDiaryId(supabaseHydrated.activeDiaryId);
         }
+
+        setTrades(supabaseHydrated.trades);
+        setJournal(supabaseHydrated.journal);
+        setJournalFolders(supabaseHydrated.folders);
+        setDiaries(supabaseHydrated.diaries);
+        setActiveDiaryId(supabaseHydrated.activeDiaryId);
+      } catch (error) {
+        console.error("Ошибка фоновой загрузки данных из Supabase:", error);
       }
     };
 
-    void init();
+    void syncFromSupabase();
 
     return () => {
       mounted = false;
@@ -1196,14 +1240,6 @@ export default function AppClient() {
 
   const tradeModal = trades.find((t) => t.id === tradeModalId);
 
-  if (isBootstrapping) {
-    return (
-      <div className="app-layout">
-        <main className="relative p-6 text-[#8aa6c7]">Загрузка данных...</main>
-      </div>
-    );
-  }
-
   return (
     <div className="app-layout">
       <aside className="sidebar">
@@ -1381,15 +1417,6 @@ export default function AppClient() {
                     {activeDiary.connectionId ? " · API привязан" : ""}
                   </div>
                 )}
-              </div>
-            )}
-
-            {appMode === "demo" && (
-              <div
-                className="font-['Sora',sans-serif] text-[28px] font-extrabold tracking-tight text-[#8cefff]"
-                style={{ textShadow: "0 0 18px rgba(103,232,249,.26)" }}
-              >
-                {fmt(currentBalance)} {balanceCurrency}
               </div>
             )}
           </div>
