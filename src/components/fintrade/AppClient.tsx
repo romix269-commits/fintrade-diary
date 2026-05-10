@@ -42,22 +42,10 @@ import AnalyticsView from "@/components/fintrade/AnalyticsView";
 import PsychologyView from "@/components/fintrade/PsychologyView";
 import NeuroAssistantView from "@/components/fintrade/NeuroAssistantView";
 
-import {
-  loadTradesFromSupabase,
-  saveTradesToSupabase,
-} from "@/lib/fintrade/trades-supabase";
-import {
-  loadDiariesFromSupabase,
-  saveDiariesToSupabase,
-} from "@/lib/fintrade/diaries-supabase";
-import {
-  loadJournalFromSupabase,
-  saveJournalToSupabase,
-} from "@/lib/fintrade/journal-supabase";
-import {
-  loadJournalFoldersFromSupabase,
-  saveJournalFoldersToSupabase,
-} from "@/lib/fintrade/journal-folders-supabase";
+import { saveTradesToSupabase } from "@/lib/fintrade/trades-supabase";
+import { saveDiariesToSupabase } from "@/lib/fintrade/diaries-supabase";
+import { saveJournalToSupabase } from "@/lib/fintrade/journal-supabase";
+import { saveJournalFoldersToSupabase } from "@/lib/fintrade/journal-folders-supabase";
 
 type ViewId =
   | "overview"
@@ -98,6 +86,14 @@ type OverviewGroupModal =
   | { type: "symbol"; value: string }
   | { type: "emotion"; value: string }
   | null;
+
+type HydratedAppData = {
+  trades: Trade[];
+  journal: JournalNote[];
+  folders: JournalFolder[];
+  diaries: TradingDiary[];
+  activeDiaryId: string | null;
+};
 
 const APP_MODE_KEY = "fintrade_app_mode_v1";
 
@@ -160,7 +156,7 @@ const NAV_ITEMS: { id: ViewId; label: string; icon: React.ReactNode }[] = [
   },
   {
     id: "neuro",
-    label: "Нейропомощник",
+    label: "Нейро",
     icon: (
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M12 3a3 3 0 0 0-3 3v1H8a3 3 0 0 0-3 3v2a3 3 0 0 0 3 3h1v1a3 3 0 0 0 6 0v-1h1a3 3 0 0 0 3-3v-2a3 3 0 0 0-3-3h-1V6a3 3 0 0 0-3-3z" />
@@ -171,7 +167,7 @@ const NAV_ITEMS: { id: ViewId; label: string; icon: React.ReactNode }[] = [
   },
   {
     id: "connections",
-    label: "Подключения",
+    label: "API",
     icon: (
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -334,13 +330,13 @@ function OverviewMetricCard({
 }
 
 function getSavedMode(): AppMode {
-  if (typeof window === "undefined") return "demo";
+  if (typeof window === "undefined") return "user";
 
   try {
     const raw = localStorage.getItem(APP_MODE_KEY);
-    return raw === "user" ? "user" : "demo";
+    return raw === "demo" ? "demo" : "user";
   } catch {
-    return "demo";
+    return "user";
   }
 }
 
@@ -352,6 +348,72 @@ function saveMode(mode: AppMode) {
   } catch {
     // ignore
   }
+}
+
+function getTradeKey(trade: Trade): string {
+  const external = trade.externalId ? String(trade.externalId) : "";
+  return [
+    trade.id || "",
+    external,
+    trade.exchange || "",
+    trade.symbol || "",
+    trade.date || "",
+    trade.time || "",
+    String(trade.entry ?? ""),
+    String(trade.exit ?? ""),
+    String(trade.size ?? ""),
+    String(trade.pnl ?? ""),
+    trade.direction || "",
+  ].join("|");
+}
+
+function getDemoTradeKeys() {
+  try {
+    return new Set(getDemoTrades().map((trade) => getTradeKey(trade)));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function stripKnownDemoTrades(list: Trade[]) {
+  const demoKeys = getDemoTradeKeys();
+  if (!demoKeys.size) return list;
+  return list.filter((trade) => !demoKeys.has(getTradeKey(trade)));
+}
+
+function getDemoNoteIdSet() {
+  try {
+    return new Set(getDemoJournal().map((note) => note.id));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function stripKnownDemoJournal(list: JournalNote[]) {
+  const demoIds = getDemoNoteIdSet();
+  if (!demoIds.size) return list;
+  return list.filter((note) => !demoIds.has(note.id));
+}
+
+function getDemoFolderIdSet() {
+  try {
+    return new Set(getDemoJournalFolders().map((folder) => folder.id));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function stripKnownDemoFolders(list: JournalFolder[]) {
+  const demoIds = getDemoFolderIdSet();
+  if (!demoIds.size) return list;
+  return list.filter((folder) => !demoIds.has(folder.id));
+}
+
+function getFolderDiaryId(folder: JournalFolder): string | null {
+  const record = folder as unknown as Record<string, unknown>;
+  if (typeof record.diaryId === "string") return record.diaryId;
+  if (typeof record.diary_id === "string") return record.diary_id;
+  return null;
 }
 
 function createRecoveredDiary(options: {
@@ -471,15 +533,6 @@ function resolveJournalDiaryId(
   return fallbackDiaryId;
 }
 
-type HydratedAppData = {
-  trades: Trade[];
-  journal: JournalNote[];
-  folders: JournalFolder[];
-  diaries: TradingDiary[];
-  activeDiaryId: string | null;
-  mode: AppMode;
-};
-
 function buildHydratedAppData(params: {
   mode: AppMode;
   trades: Trade[];
@@ -494,14 +547,12 @@ function buildHydratedAppData(params: {
   let f = [...params.folders];
   let loadedDiaries = [...params.diaries];
 
-  if (t.length === 0 && params.mode === "demo") {
-    t = getDemoTrades();
-    j = getDemoJournal();
-    f = getDemoJournalFolders();
-
-    if (!loadedDiaries.length) {
-      loadedDiaries = loadDiaries();
-    }
+  // В реальном режиме дополнительно убираем известные демо-записи.
+  // Это защищает от старых локальных смешанных данных.
+  if (params.mode === "user") {
+    t = stripKnownDemoTrades(t);
+    j = stripKnownDemoJournal(j);
+    f = stripKnownDemoFolders(f);
   }
 
   loadedDiaries = ensureDiariesCoverStoredData(loadedDiaries, t, j, params.connections);
@@ -530,8 +581,15 @@ function buildHydratedAppData(params: {
     folders: f,
     diaries: loadedDiaries,
     activeDiaryId: safeActiveDiaryId,
-    mode: params.mode,
   };
+}
+
+function saveHydratedData(data: HydratedAppData) {
+  saveTrades(data.trades);
+  saveJournal(data.journal);
+  saveJournalFolders(data.folders);
+  saveDiaries(data.diaries);
+  if (data.activeDiaryId) saveActiveDiaryId(data.activeDiaryId);
 }
 
 export default function AppClient() {
@@ -541,7 +599,7 @@ export default function AppClient() {
   const [journalFolders, setJournalFolders] = useState<JournalFolder[]>([]);
   const [tradeModalId, setTradeModalId] = useState<string | null>(null);
   const [imageViewerSrc, setImageViewerSrc] = useState<string | null>(null);
-  const [appMode, setAppMode] = useState<AppMode>("demo");
+  const [appMode, setAppMode] = useState<AppMode>("user");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [diaries, setDiaries] = useState<TradingDiary[]>([]);
   const [activeDiaryId, setActiveDiaryId] = useState<string | null>(null);
@@ -609,11 +667,7 @@ export default function AppClient() {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-
     const mode = getSavedMode();
-    setAppMode(mode);
-
     const connections = loadConnections();
 
     const localHydrated = buildHydratedAppData({
@@ -626,65 +680,17 @@ export default function AppClient() {
       connections,
     });
 
-    saveTrades(localHydrated.trades);
-    saveJournal(localHydrated.journal);
-    saveJournalFolders(localHydrated.folders);
-    saveDiaries(localHydrated.diaries);
-    if (localHydrated.activeDiaryId) {
-      saveActiveDiaryId(localHydrated.activeDiaryId);
-    }
-
+    saveHydratedData(localHydrated);
+    setAppMode(mode);
     setTrades(localHydrated.trades);
     setJournal(localHydrated.journal);
     setJournalFolders(localHydrated.folders);
     setDiaries(localHydrated.diaries);
     setActiveDiaryId(localHydrated.activeDiaryId);
 
-    const syncFromSupabase = async () => {
-      try {
-        const [supabaseTrades, supabaseJournal, supabaseFolders, supabaseDiaries] =
-          await Promise.all([
-            loadTradesFromSupabase(),
-            loadJournalFromSupabase(),
-            loadJournalFoldersFromSupabase(),
-            loadDiariesFromSupabase(),
-          ]);
-
-        if (!mounted) return;
-
-        const supabaseHydrated = buildHydratedAppData({
-          mode,
-          trades: supabaseTrades,
-          journal: supabaseJournal,
-          folders: supabaseFolders,
-          diaries: supabaseDiaries,
-          loadedActiveDiaryId: loadActiveDiaryId(),
-          connections,
-        });
-
-        saveTrades(supabaseHydrated.trades);
-        saveJournal(supabaseHydrated.journal);
-        saveJournalFolders(supabaseHydrated.folders);
-        saveDiaries(supabaseHydrated.diaries);
-        if (supabaseHydrated.activeDiaryId) {
-          saveActiveDiaryId(supabaseHydrated.activeDiaryId);
-        }
-
-        setTrades(supabaseHydrated.trades);
-        setJournal(supabaseHydrated.journal);
-        setJournalFolders(supabaseHydrated.folders);
-        setDiaries(supabaseHydrated.diaries);
-        setActiveDiaryId(supabaseHydrated.activeDiaryId);
-      } catch (error) {
-        console.error("Ошибка фоновой загрузки данных из Supabase:", error);
-      }
-    };
-
-    void syncFromSupabase();
-
-    return () => {
-      mounted = false;
-    };
+    // ВАЖНО: здесь специально нет loadTradesFromSupabase / syncFromSupabase.
+    // Иначе через секунду после обновления страницы старые данные из базы
+    // перезаписывают локальные и смешивают реальные сделки с демо.
   }, []);
 
   useEffect(() => {
@@ -734,14 +740,7 @@ export default function AppClient() {
   const scopedJournalFolders = useMemo(() => {
     if (!activeDiaryId) return journalFolders;
     return journalFolders.filter((folder) => {
-      const anyFolder = folder as unknown as Record<string, unknown>;
-      const diaryId =
-        typeof anyFolder.diaryId === "string"
-          ? anyFolder.diaryId
-          : typeof anyFolder.diary_id === "string"
-            ? String(anyFolder.diary_id)
-            : null;
-
+      const diaryId = getFolderDiaryId(folder);
       return !diaryId || diaryId === activeDiaryId;
     });
   }, [journalFolders, activeDiaryId]);
@@ -801,6 +800,11 @@ export default function AppClient() {
     return startBalance > 0 ? startBalance : 0;
   }, [connectionBalance, manualBalance, startBalance]);
 
+  const switchToUserMode = useCallback(() => {
+    saveMode("user");
+    setAppMode("user");
+  }, []);
+
   const handleCreateDiary = useCallback(() => {
     const nextDiary = createDiary(diaries);
     const nextDiaries = [...diaries, nextDiary];
@@ -808,9 +812,10 @@ export default function AppClient() {
     void persistDiaries(nextDiaries);
     setActiveDiaryId(nextDiary.id);
     saveActiveDiaryId(nextDiary.id);
+    switchToUserMode();
 
     showNotice("success", `Создан новый дневник: ${nextDiary.name}`);
-  }, [diaries, persistDiaries, showNotice]);
+  }, [diaries, persistDiaries, showNotice, switchToUserMode]);
 
   const handleChangeDiary = useCallback((diaryId: string) => {
     setActiveDiaryId(diaryId);
@@ -855,8 +860,9 @@ export default function AppClient() {
     void persistDiaries(nextDiaries);
     setIsRenameDiaryModalOpen(false);
     setRenameDiaryValue("");
+    switchToUserMode();
     showNotice("success", `Дневник переименован: ${trimmedName}`);
-  }, [activeDiary, diaries, renameDiaryValue, persistDiaries, showNotice]);
+  }, [activeDiary, diaries, renameDiaryValue, persistDiaries, showNotice, switchToUserMode]);
 
   const handleDeleteDiary = useCallback(() => {
     if (!activeDiary) {
@@ -889,16 +895,7 @@ export default function AppClient() {
 
     const nextTrades = trades.filter((trade) => trade.diaryId !== activeDiary.id);
     const nextJournal = journal.filter((note) => note.diaryId !== activeDiary.id);
-    const nextFolders = journalFolders.filter((folder) => {
-      const anyFolder = folder as unknown as Record<string, unknown>;
-      const folderDiaryId =
-        typeof anyFolder.diaryId === "string"
-          ? anyFolder.diaryId
-          : typeof anyFolder.diary_id === "string"
-            ? String(anyFolder.diary_id)
-            : null;
-      return folderDiaryId !== activeDiary.id;
-    });
+    const nextFolders = journalFolders.filter((folder) => getFolderDiaryId(folder) !== activeDiary.id);
 
     void persistDiaries(nextDiaries);
     void persistTrades(nextTrades);
@@ -919,6 +916,7 @@ export default function AppClient() {
     });
 
     setIsDeleteDiaryModalOpen(false);
+    switchToUserMode();
     showNotice("info", `Дневник "${activeDiary.name}" удалён.`);
   }, [
     activeDiary,
@@ -931,6 +929,7 @@ export default function AppClient() {
     persistJournal,
     persistJournalFolders,
     showNotice,
+    switchToUserMode,
   ]);
 
   const handleEditDiaryBalance = useCallback(() => {
@@ -987,6 +986,7 @@ export default function AppClient() {
     setIsBalanceDiaryModalOpen(false);
     setBalanceValueInput("");
     setBalanceCurrencyInput("USD");
+    switchToUserMode();
 
     showNotice(
       "success",
@@ -1002,6 +1002,7 @@ export default function AppClient() {
     diaries,
     persistDiaries,
     showNotice,
+    switchToUserMode,
   ]);
 
   const handleAttachConnectionToDiary = useCallback(() => {
@@ -1042,8 +1043,9 @@ export default function AppClient() {
     void persistDiaries(nextDiaries);
     setIsAttachConnectionModalOpen(false);
     setSelectedAttachConnectionId("");
+    switchToUserMode();
     showNotice("success", `Дневник привязан к подключению: ${selectedConnection.name}`);
-  }, [activeDiary, connections, selectedAttachConnectionId, diaries, persistDiaries, showNotice]);
+  }, [activeDiary, connections, selectedAttachConnectionId, diaries, persistDiaries, showNotice, switchToUserMode]);
 
   const handleLoadDemo = () => {
     if (!confirm("Загрузить демонстрационные данные? Текущие локальные данные будут заменены.")) return;
@@ -1153,9 +1155,9 @@ export default function AppClient() {
 
         saveMode("user");
         setAppMode("user");
-        void persistTrades(normalizedTrades);
-        void persistJournal(normalizedJournal);
-        void persistJournalFolders(importedFolders);
+        void persistTrades(stripKnownDemoTrades(normalizedTrades));
+        void persistJournal(stripKnownDemoJournal(normalizedJournal));
+        void persistJournalFolders(stripKnownDemoFolders(importedFolders));
         void persistDiaries(nextDiaries);
         setActiveDiaryId(safeActiveDiaryId);
         saveActiveDiaryId(safeActiveDiaryId);
@@ -1192,14 +1194,16 @@ export default function AppClient() {
         return 0;
       }
 
+      const baseTrades = appMode === "demo" ? [] : stripKnownDemoTrades(trades);
+
       const existingIds = new Set(
-        trades
+        baseTrades
           .filter((t) => t.diaryId === activeDiaryId)
           .map((t) => t.id)
       );
 
       const existingExternalIds = new Set(
-        trades
+        baseTrades
           .filter(
             (t) =>
               t.diaryId === activeDiaryId &&
@@ -1223,10 +1227,15 @@ export default function AppClient() {
         });
 
       if (!uniqueImportedTrades.length) {
+        saveMode("user");
+        setAppMode("user");
+        if (appMode === "demo") {
+          void persistTrades(baseTrades);
+        }
         return 0;
       }
 
-      const nextTrades = [...uniqueImportedTrades, ...trades];
+      const nextTrades = [...uniqueImportedTrades, ...baseTrades];
 
       saveMode("user");
       setAppMode("user");
@@ -1235,13 +1244,65 @@ export default function AppClient() {
 
       return uniqueImportedTrades.length;
     },
-    [trades, persistTrades, activeDiaryId]
+    [trades, persistTrades, activeDiaryId, appMode]
+  );
+
+  const handleUpdateTradesFromView = useCallback(
+    (nextTrades: Trade[]) => {
+      const cleanedNextTrades = appMode === "demo" ? stripKnownDemoTrades(nextTrades) : nextTrades;
+      saveMode("user");
+      setAppMode("user");
+      void persistTrades(cleanedNextTrades);
+    },
+    [appMode, persistTrades]
+  );
+
+  const handleUpdateJournalFromView = useCallback(
+    (nextJournal: JournalNote[]) => {
+      const cleanedNextJournal = appMode === "demo" ? stripKnownDemoJournal(nextJournal) : nextJournal;
+      saveMode("user");
+      setAppMode("user");
+      void persistJournal(cleanedNextJournal);
+    },
+    [appMode, persistJournal]
+  );
+
+  const handleUpdateFoldersFromView = useCallback(
+    (nextFolders: JournalFolder[]) => {
+      const cleanedNextFolders = appMode === "demo" ? stripKnownDemoFolders(nextFolders) : nextFolders;
+      saveMode("user");
+      setAppMode("user");
+      void persistJournalFolders(cleanedNextFolders);
+    },
+    [appMode, persistJournalFolders]
   );
 
   const tradeModal = trades.find((t) => t.id === tradeModalId);
 
   return (
     <div className="app-layout">
+      <div className="mobile-topbar">
+        <div className="mobile-brand-row">
+          <div className="brand-mark mobile-brand-mark">
+            <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="15" y="36" width="5" height="10" rx="2.5" fill="rgba(255,255,255,.65)" />
+              <rect x="24" y="29" width="5" height="17" rx="2.5" fill="rgba(255,255,255,.78)" />
+              <rect x="33" y="22" width="5" height="24" rx="2.5" fill="rgba(255,255,255,.88)" />
+              <path d="M16 38 L26 31 L35 24 L46 16" stroke="white" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.95" />
+              <circle cx="16" cy="38" r="3.4" fill="white" />
+              <circle cx="26" cy="31" r="3.4" fill="white" />
+              <circle cx="35" cy="24" r="3.4" fill="white" />
+              <circle cx="46" cy="16" r="3.4" fill="white" />
+            </svg>
+          </div>
+          <div>
+            <div className="mobile-brand-title">ФинТрейд</div>
+            <div className="mobile-brand-subtitle">Дневник трейдера</div>
+          </div>
+        </div>
+        <button className="btn mobile-new-trade" onClick={() => setActiveView("trades")}>Новая</button>
+      </div>
+
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
@@ -1284,7 +1345,7 @@ export default function AppClient() {
               <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center text-[#7ed8ff]">
                 {item.icon}
               </span>
-              {item.label}
+              {item.label === "API" ? "Подключения" : item.label === "Нейро" ? "Нейропомощник" : item.label}
             </button>
           ))}
         </div>
@@ -1337,8 +1398,18 @@ export default function AppClient() {
           </div>
         )}
 
-        <div className="mb-[18px] flex flex-wrap items-center justify-between gap-4 pt-[10px]">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="mobile-quick-actions">
+          <button className="btn btn-secondary" onClick={handleStartWithOwnData}>Свои данные</button>
+          <button className="btn btn-secondary" onClick={handleLoadDemo}>Демо</button>
+          <button className="btn btn-secondary" onClick={handleExportJson}>Экспорт</button>
+          <label className="btn btn-secondary flex cursor-pointer items-center justify-center">
+            Импорт
+            <input type="file" accept=".json" hidden onChange={handleImportJson} />
+          </label>
+        </div>
+
+        <div className="mb-[18px] flex flex-wrap items-center justify-between gap-4 pt-[10px] mobile-header-block">
+          <div className="flex flex-wrap items-center gap-3 mobile-header-left">
             <div className="account-card">
               <strong className="block text-[15px]">
                 {appMode === "demo" ? "Демо-режим" : "Торговый кабинет"}
@@ -1351,12 +1422,12 @@ export default function AppClient() {
             </div>
 
             {appMode !== "demo" && (
-              <div className="rounded-[18px] border border-[rgba(56,189,248,.08)] bg-[rgba(10,18,34,.62)] px-4 py-3">
+              <div className="rounded-[18px] border border-[rgba(56,189,248,.08)] bg-[rgba(10,18,34,.62)] px-4 py-3 diary-panel">
                 <div className="text-[12px] font-medium uppercase tracking-[0.08em] text-[#6f8aa8]">
                   Торговый дневник
                 </div>
 
-                <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2 diary-controls">
                   <select
                     value={activeDiaryId ?? ""}
                     onChange={(e) => handleChangeDiary(e.target.value)}
@@ -1421,7 +1492,7 @@ export default function AppClient() {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-[10px]">
+          <div className="flex flex-wrap items-center gap-[10px] mobile-header-actions">
             <div className="chip">{appMode === "demo" ? "Режим ознакомления" : "Ваши данные"}</div>
 
             <button className="btn" onClick={() => setActiveView("trades")}>
@@ -1454,11 +1525,7 @@ export default function AppClient() {
             trades={scopedTrades}
             allTrades={trades}
             activeDiaryId={activeDiaryId}
-            updateTrades={(nextTrades) => {
-              saveMode("user");
-              setAppMode("user");
-              void persistTrades(nextTrades);
-            }}
+            updateTrades={handleUpdateTradesFromView}
             onOpenTrade={setTradeModalId}
             onOpenImage={setImageViewerSrc}
           />
@@ -1484,16 +1551,8 @@ export default function AppClient() {
             allJournal={journal}
             activeDiaryId={activeDiaryId}
             folders={scopedJournalFolders}
-            updateJournal={(nextJournal) => {
-              saveMode("user");
-              setAppMode("user");
-              void persistJournal(nextJournal);
-            }}
-            updateFolders={(nextFolders) => {
-              saveMode("user");
-              setAppMode("user");
-              void persistJournalFolders(nextFolders);
-            }}
+            updateJournal={handleUpdateJournalFromView}
+            updateFolders={handleUpdateFoldersFromView}
           />
         )}
 
@@ -1512,6 +1571,20 @@ export default function AppClient() {
           />
         )}
       </main>
+
+      <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`mobile-nav-item ${activeView === item.id ? "active" : ""}`}
+            onClick={() => setActiveView(item.id)}
+          >
+            <span>{item.icon}</span>
+            <small>{item.label}</small>
+          </button>
+        ))}
+      </nav>
 
       {isRenameDiaryModalOpen && activeDiary && (
         <div
@@ -1868,6 +1941,328 @@ export default function AppClient() {
           />
         </div>
       )}
+
+      <style jsx global>{`
+        .mobile-topbar,
+        .mobile-bottom-nav,
+        .mobile-quick-actions {
+          display: none;
+        }
+
+        @media (max-width: 980px) {
+          html,
+          body {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden !important;
+          }
+
+          body {
+            margin: 0 !important;
+          }
+
+          .app-layout {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-height: 100dvh !important;
+            overflow-x: hidden !important;
+            padding: 0 !important;
+          }
+
+          .app-layout > .sidebar {
+            display: none !important;
+          }
+
+          .app-layout > main {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            padding: 12px !important;
+            padding-top: 86px !important;
+            padding-bottom: 108px !important;
+            overflow-x: hidden !important;
+          }
+
+          .mobile-topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 80;
+            display: flex !important;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 70px;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(56, 189, 248, 0.14);
+            background: rgba(3, 10, 21, 0.92);
+            backdrop-filter: blur(14px);
+          }
+
+          .mobile-brand-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+          }
+
+          .mobile-brand-mark {
+            width: 44px !important;
+            height: 44px !important;
+            min-width: 44px !important;
+          }
+
+          .mobile-brand-title {
+            font-size: 18px;
+            line-height: 1.05;
+            font-weight: 900;
+            color: #fff;
+          }
+
+          .mobile-brand-subtitle {
+            margin-top: 3px;
+            font-size: 11px;
+            line-height: 1.2;
+            color: #8aa6c7;
+          }
+
+          .mobile-new-trade {
+            min-height: 42px !important;
+            padding: 0 14px !important;
+            border-radius: 14px !important;
+            white-space: nowrap;
+          }
+
+          .mobile-quick-actions {
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+          }
+
+          .mobile-quick-actions .btn,
+          .mobile-quick-actions label.btn {
+            min-width: 0 !important;
+            min-height: 42px !important;
+            padding: 0 6px !important;
+            border-radius: 14px !important;
+            font-size: 12px !important;
+            text-align: center;
+          }
+
+          .mobile-header-block {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+            padding-top: 0 !important;
+            margin-bottom: 14px !important;
+          }
+
+          .mobile-header-left,
+          .mobile-header-actions,
+          .diary-controls {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+          }
+
+          .account-card,
+          .diary-panel,
+          .diary-controls select,
+          .diary-controls .btn,
+          .mobile-header-actions .btn,
+          .mobile-header-actions .chip {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          .diary-panel {
+            padding: 14px !important;
+            border-radius: 18px !important;
+          }
+
+          .diary-controls .btn,
+          .mobile-header-actions .btn {
+            min-height: 44px !important;
+          }
+
+          .mobile-header-actions .chip {
+            justify-content: center;
+            text-align: center;
+          }
+
+          .hero-card {
+            border-radius: 20px !important;
+          }
+
+          .hero-grid {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 14px !important;
+          }
+
+          .hero-title {
+            font-size: 25px !important;
+            line-height: 1.12 !important;
+          }
+
+          .hero-subtitle {
+            font-size: 13px !important;
+            line-height: 1.55 !important;
+          }
+
+          .hero-card .btn {
+            width: 100% !important;
+          }
+
+          .card,
+          .stat-card,
+          .item,
+          .account-card {
+            max-width: 100% !important;
+          }
+
+          canvas {
+            max-width: 100% !important;
+          }
+
+          .grid,
+          section,
+          .card,
+          .item {
+            min-width: 0 !important;
+          }
+
+          .calendar-cell {
+            min-height: 70px !important;
+            padding: 8px !important;
+            border-radius: 14px !important;
+          }
+
+          .calendar-day-num {
+            font-size: 13px !important;
+          }
+
+          .calendar-pnl {
+            margin-top: 8px !important;
+            font-size: 11px !important;
+            word-break: break-word;
+          }
+
+          .symbol-row {
+            width: 100% !important;
+          }
+
+          .modal-card {
+            width: calc(100vw - 24px) !important;
+            max-width: calc(100vw - 24px) !important;
+            max-height: 86dvh !important;
+            overflow-y: auto !important;
+            border-radius: 20px !important;
+          }
+
+          .mobile-bottom-nav {
+            position: fixed;
+            left: 8px;
+            right: 8px;
+            bottom: 8px;
+            z-index: 90;
+            display: grid !important;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 4px;
+            padding: 6px;
+            border: 1px solid rgba(56, 189, 248, 0.16);
+            border-radius: 22px;
+            background: rgba(3, 10, 21, 0.92);
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(16px);
+          }
+
+          .mobile-nav-item {
+            display: flex;
+            min-width: 0;
+            min-height: 54px;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            border: 1px solid transparent;
+            border-radius: 16px;
+            color: #8aa6c7;
+            background: transparent;
+            font-weight: 800;
+          }
+
+          .mobile-nav-item svg {
+            width: 17px;
+            height: 17px;
+          }
+
+          .mobile-nav-item small {
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 9px;
+            line-height: 1.1;
+          }
+
+          .mobile-nav-item.active {
+            border-color: rgba(56, 189, 248, 0.26);
+            color: #8cefff;
+            background: rgba(19, 36, 63, 0.75);
+            box-shadow: inset 3px 0 0 #22c8ff;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .app-layout > main {
+            padding-left: 10px !important;
+            padding-right: 10px !important;
+          }
+
+          .mobile-quick-actions {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .hero-title {
+            font-size: 23px !important;
+          }
+
+          .stat-value {
+            font-size: 30px !important;
+          }
+
+          .calendar-cell {
+            min-height: 62px !important;
+            padding: 7px !important;
+          }
+
+          .calendar-pnl {
+            font-size: 10px !important;
+          }
+
+          .mobile-bottom-nav {
+            left: 6px;
+            right: 6px;
+            bottom: 6px;
+            gap: 2px;
+            padding: 5px;
+          }
+
+          .mobile-nav-item {
+            min-height: 50px;
+            border-radius: 14px;
+          }
+
+          .mobile-nav-item small {
+            font-size: 8px;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -2847,3 +3242,4 @@ function OverviewView({
     </div>
   );
 }
+

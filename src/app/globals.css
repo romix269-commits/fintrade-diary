@@ -902,3 +902,391 @@ tr.trade-row {
     font-size: 32px;
   }
 }
+
+.mobile-topbar {
+  display: none;
+}
+
+.mobile-menu-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  background: rgba(8, 19, 37, 0.92);
+  color: #dff4ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.mobile-topbar-brand {
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-topbar-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #f4fbff;
+  line-height: 1.1;
+}
+
+.mobile-topbar-subtitle {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #8aa6c7;
+  line-height: 1.2;
+}
+
+.mobile-topbar-action {
+  padding: 10px 12px;
+  font-size: 12px;
+  border-radius: 12px;
+}
+
+.mobile-nav-overlay {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: linear-gradient(180deg, rgba(4, 9, 21, 0.96), rgba(4, 9, 18, 0.92));
+    border-bottom: 1px solid rgba(56, 189, 248, 0.1);
+    backdrop-filter: blur(12px);
+  }
+
+  .app-layout {
+    display: block;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 60;
+    width: min(86vw, 320px);
+    height: 100vh;
+    transform: translateX(-104%);
+    transition: transform 0.22s ease;
+    border-right: 1px solid rgba(56, 189, 248, 0.12);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .mobile-nav-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    border: none;
+    background: rgba(0, 0, 0, 0.58);
+    backdrop-filter: blur(3px);
+  }
+
+  .app-layout > main {
+    padding: 14px !important;
+  }
+
+  .brand-banner {
+    min-height: auto;
+  }
+
+  .account-card {
+    min-width: 100%;
+  }
+
+  .chip {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .modal-overlay {
+    padding: 10px;
+    align-items: flex-end;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: 88vh;
+    border-radius: 20px 20px 0 0;
+    padding: 16px;
+  }
+
+  table {
+    min-width: 900px;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-card {
+    border-radius: 22px;
+  }
+
+  .hero-grid {
+    gap: 14px;
+    padding: 0;
+  }
+
+  .hero-title {
+    font-size: 22px;
+    line-height: 1.15;
+  }
+
+  .hero-subtitle {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .stat-card {
+    min-height: 108px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .stat-value {
+    font-size: 26px;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .item {
+    padding: 12px;
+  }
+
+  input,
+  select,
+  textarea {
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .brand {
+    padding: 6px 8px 14px;
+  }
+
+  .brand-title {
+    font-size: 18px;
+  }
+
+  .brand-subtitle {
+    font-size: 11px;
+  }
+
+  .nav-btn {
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  .mobile-topbar {
+    padding: 10px 12px;
+  }
+
+  .mobile-menu-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mobile-topbar-action {
+    min-width: auto;
+    padding: 10px 10px;
+  }
+
+  .app-layout > main {
+    padding: 12px !important;
+  }
+
+  .modal-card {
+    padding: 14px;
+  }
+}
+@media (max-width: 980px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  .mobile-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: linear-gradient(180deg, rgba(4, 9, 21, 0.97), rgba(4, 9, 18, 0.94));
+    border-bottom: 1px solid rgba(56, 189, 248, 0.1);
+    backdrop-filter: blur(12px);
+  }
+
+  .mobile-topbar-brand {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .mobile-topbar-title,
+  .mobile-topbar-subtitle {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-topbar-title {
+    font-size: 14px;
+  }
+
+  .mobile-topbar-subtitle {
+    font-size: 10px;
+  }
+
+  .mobile-topbar-action {
+    width: auto !important;
+    min-width: 72px !important;
+    max-width: 92px;
+    padding: 10px 12px !important;
+    font-size: 12px !important;
+    flex: 0 0 auto;
+  }
+
+  .app-layout {
+    display: block !important;
+    min-height: 100vh;
+  }
+
+  .app-layout > main {
+    width: 100%;
+    max-width: 100%;
+    padding: 12px !important;
+  }
+
+  .app-layout > main > * {
+    max-width: 100%;
+  }
+
+  .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    z-index: 100 !important;
+    width: min(86vw, 320px) !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    transform: translateX(-104%) !important;
+    transition: transform 0.22s ease !important;
+    border-right: 1px solid rgba(56, 189, 248, 0.12) !important;
+    overflow-y: auto !important;
+  }
+
+  .sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  .account-card,
+  .chip,
+  .card,
+  .item,
+  .hero-card,
+  .hero-grid,
+  .stat-card,
+  .modal-card {
+    max-width: 100%;
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1fr !important;
+    gap: 14px;
+    padding: 0;
+    min-height: auto;
+  }
+
+  .hero-title {
+    font-size: 28px;
+    line-height: 1.08;
+  }
+
+  .hero-subtitle {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .stat-card {
+    min-height: 112px;
+  }
+
+  .stat-value {
+    font-size: 26px;
+  }
+
+  canvas {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .mobile-menu-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .mobile-topbar {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .mobile-topbar-title {
+    font-size: 13px;
+  }
+
+  .mobile-topbar-action {
+    min-width: 68px !important;
+    max-width: 84px;
+    padding: 9px 10px !important;
+    font-size: 11px !important;
+  }
+
+  .app-layout > main {
+    padding: 10px !important;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .item {
+    padding: 12px;
+  }
+}
