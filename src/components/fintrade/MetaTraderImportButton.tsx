@@ -31,7 +31,7 @@ export default function MetaTraderImportButton({
 
       if (!trades.length) {
         setMessage(
-          "Не удалось найти сделки в файле MetaTrader. Проверьте, что это отчёт торговой истории MT4/MT5."
+          "Не удалось найти сделки в файле MetaTrader. Проверьте, что это HTML-отчёт торговой истории MT4/MT5."
         );
         return;
       }
@@ -72,7 +72,7 @@ export default function MetaTraderImportButton({
         ref={inputRef}
         type="file"
         hidden
-        accept=".html,.htm,.csv,.txt,.xls"
+        accept=".html,.htm"
         onChange={handleFileChange}
       />
 

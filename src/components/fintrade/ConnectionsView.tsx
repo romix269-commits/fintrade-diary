@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { Trade } from "@/lib/fintrade/store";
@@ -507,9 +507,8 @@ export default function ConnectionsView({
                 Импорт из MetaTrader
               </h3>
               <p className="mt-2 text-[15px] leading-7 text-[#9fb2cc]">
-                Загрузите отчёт из MetaTrader 4/5: CSV, TXT, HTML или XLS.
-                Сделки будут добавлены в активный торговый дневник, а дубли
-                будут пропущены автоматически.
+                Загрузите HTML-отчёт из MetaTrader 4/5. Сделки будут добавлены
+                в активный торговый дневник, а дубли будут пропущены автоматически.
               </p>
 
               {activeDiaryName && (
@@ -889,4 +888,4 @@ function formatDateTime(value?: string) {
   } catch {
     return value;
   }
-}                                                
+}                                      
