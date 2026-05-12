@@ -14,6 +14,8 @@ import {
   fetchBalances,
   importTradesFromConnection,
 } from "@/components/fintrade/exchanges";
+import TigerImportButton from "@/components/fintrade/TigerImportButton";
+import MetaTraderImportButton from "@/components/fintrade/MetaTraderImportButton";
 
 type Props = {
   onImportTrades: (trades: Trade[]) => number;
@@ -163,6 +165,38 @@ export default function ConnectionsView({
     const target = connections.find((c) => c.id === id);
     updateConnections(connections.filter((c) => c.id !== id));
     showNotice("info", `Подключение ${target?.name ?? ""} удалено.`.trim());
+  };
+
+  const handleTigerImportTrades = (importedTrades: Trade[]) => {
+    const addedCount = onImportTrades(importedTrades);
+
+    const diaryHint =
+      addedCount > 0 && activeDiaryName ? ` в дневник "${activeDiaryName}"` : "";
+
+    showNotice(
+      addedCount > 0 ? "success" : "info",
+      addedCount > 0
+        ? `Импорт Tiger.com выполнен. Добавлено сделок: ${addedCount}${diaryHint}.`
+        : "Tiger.com: новых сделок для импорта нет."
+    );
+
+    return addedCount;
+  };
+
+  const handleMetaTraderImportTrades = (importedTrades: Trade[]) => {
+    const addedCount = onImportTrades(importedTrades);
+
+    const diaryHint =
+      addedCount > 0 && activeDiaryName ? ` в дневник "${activeDiaryName}"` : "";
+
+    showNotice(
+      addedCount > 0 ? "success" : "info",
+      addedCount > 0
+        ? `Импорт MetaTrader выполнен. Добавлено сделок: ${addedCount}${diaryHint}.`
+        : "MetaTrader: новых сделок для импорта нет."
+    );
+
+    return addedCount;
   };
 
   const handleTestConnection = async (id: string) => {
@@ -436,6 +470,61 @@ export default function ConnectionsView({
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="card">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="m-0 text-[18px] font-bold text-white">
+                Импорт из терминала Tiger.com
+              </h3>
+              <p className="mt-2 text-[15px] leading-7 text-[#9fb2cc]">
+                Загрузите CSV или TXT файл, экспортированный из Tiger.com.
+                Сделки будут добавлены в активный торговый дневник.
+              </p>
+
+              {activeDiaryName && (
+                <div className="mt-2 text-sm text-[#7dd3fc]">
+                  Активный дневник:{" "}
+                  <strong className="text-white">{activeDiaryName}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <TigerImportButton
+            onImportTrades={handleTigerImportTrades}
+            className="btn"
+          />
+        </div>
+
+        <div className="card">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="m-0 text-[18px] font-bold text-white">
+                Импорт из MetaTrader
+              </h3>
+              <p className="mt-2 text-[15px] leading-7 text-[#9fb2cc]">
+                Загрузите отчёт из MetaTrader 4/5: CSV, TXT, HTML или XLS.
+                Сделки будут добавлены в активный торговый дневник, а дубли
+                будут пропущены автоматически.
+              </p>
+
+              {activeDiaryName && (
+                <div className="mt-2 text-sm text-[#7dd3fc]">
+                  Активный дневник:{" "}
+                  <strong className="text-white">{activeDiaryName}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <MetaTraderImportButton
+            onImportTrades={handleMetaTraderImportTrades}
+            className="btn"
+          />
         </div>
       </section>
 
@@ -800,4 +889,4 @@ function formatDateTime(value?: string) {
   } catch {
     return value;
   }
-}                                                               
+}                                                
