@@ -245,6 +245,7 @@ export default function AnalyticsView({
   const donutRef = useRef<HTMLCanvasElement>(null);
   const equityRef = useRef<HTMLCanvasElement>(null);
 
+  const [showEquityPoints, setShowEquityPoints] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
@@ -573,10 +574,11 @@ export default function AnalyticsView({
         (trade) => {
           if (!trade?.id) return;
           onOpenTrade?.(trade.id);
-        }
+        },
+        showEquityPoints
       );
     }
-  }, [filteredTrades, onOpenTrade]);
+  }, [filteredTrades, onOpenTrade, showEquityPoints]);
 
   useEffect(() => {
     const timer = window.setTimeout(drawCharts, 100);
@@ -1302,9 +1304,20 @@ export default function AnalyticsView({
 
       <div className="grid grid-cols-2 gap-4 max-[1200px]:grid-cols-1">
         <div className="card">
-          <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="m-0 text-lg font-bold">Кривая доходности по фильтрам</h2>
-            <span className="chip">{filteredTrades.length} сделок</span>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="chip">{filteredTrades.length} сделок</span>
+
+              <button
+                type="button"
+                className={`btn ${showEquityPoints ? "" : "btn-secondary"}`}
+                onClick={() => setShowEquityPoints((prev) => !prev)}
+              >
+                {showEquityPoints ? "Скрыть точки" : "Показать точки"}
+              </button>
+            </div>
           </div>
 
           <div className="rounded-[18px] border border-[rgba(56,189,248,.08)] bg-[rgba(8,15,28,.35)] p-3">

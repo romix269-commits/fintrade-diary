@@ -102,7 +102,8 @@ function drawEquityBase(
   pad: number,
   values: number[],
   orderedTrades: Trade[],
-  hoveredIndex: number | null = null
+  hoveredIndex: number | null = null,
+  showTradePoints = true
 ) {
   ctx.clearRect(0, 0, w, h);
   drawGrid(ctx, w, h, pad);
@@ -151,27 +152,29 @@ function drawEquityBase(
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  points.forEach((point, index) => {
-    const trade = orderedTrades[index];
-    const positive = (trade?.pnl || 0) >= 0;
-    const isHovered = hoveredIndex === index;
+  if (showTradePoints) {
+    points.forEach((point, index) => {
+      const trade = orderedTrades[index];
+      const positive = (trade?.pnl || 0) >= 0;
+      const isHovered = hoveredIndex === index;
 
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, isHovered ? 6.5 : 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = positive ? "#4de2c5" : "#ff6b81";
-    ctx.shadowColor = positive ? "rgba(77,226,197,.45)" : "rgba(255,107,129,.45)";
-    ctx.shadowBlur = isHovered ? 18 : 12;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    if (isHovered) {
       ctx.beginPath();
-      ctx.arc(point.x, point.y, 10, 0, Math.PI * 2);
-      ctx.strokeStyle = positive ? "rgba(77,226,197,.45)" : "rgba(255,107,129,.45)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-  });
+      ctx.arc(point.x, point.y, isHovered ? 6.5 : 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = positive ? "#4de2c5" : "#ff6b81";
+      ctx.shadowColor = positive ? "rgba(77,226,197,.45)" : "rgba(255,107,129,.45)";
+      ctx.shadowBlur = isHovered ? 18 : 12;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      if (isHovered) {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 10, 0, Math.PI * 2);
+        ctx.strokeStyle = positive ? "rgba(77,226,197,.45)" : "rgba(255,107,129,.45)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    });
+  }
 
   return points;
 }
@@ -280,7 +283,8 @@ export function drawEquityChart(
   canvas: HTMLCanvasElement,
   values: number[],
   trades: Trade[],
-  onPointClick?: (trade: Trade) => void
+  onPointClick?: (trade: Trade) => void,
+  showTradePoints = true
 ) {
   const target = canvas as EquityCanvasWithHandlers;
 
@@ -309,9 +313,10 @@ export function drawEquityChart(
   const pad = 28;
 
   const orderedTrades = sortTradesExactlyLikeEquityCurve(trades);
-  const points = drawEquityBase(ctx, w, h, pad, values, orderedTrades, null);
+  const points = drawEquityBase(ctx, w, h, pad, values, orderedTrades, null, showTradePoints);
 
-  if (!values.length || !points.length) {
+  if (!values.length || !points.length || !showTradePoints) {
+    canvas.style.cursor = "default";
     return;
   }
 
@@ -320,7 +325,7 @@ export function drawEquityChart(
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.scale(devicePixelRatio, devicePixelRatio);
 
-    const nextPoints = drawEquityBase(ctx, w, h, pad, values, orderedTrades, hoveredIndex);
+    const nextPoints = drawEquityBase(ctx, w, h, pad, values, orderedTrades, hoveredIndex, showTradePoints);
 
     if (hoveredIndex !== null && nextPoints[hoveredIndex]) {
       drawTooltip(ctx, w, h, nextPoints[hoveredIndex]);

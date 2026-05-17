@@ -80,8 +80,6 @@ type CalendarMonthData = {
   month: number;
 };
 
-type BalanceEditMode = "manual" | "start";
-
 type OverviewGroupModal =
   | { type: "symbol"; value: string }
   | { type: "emotion"; value: string }
@@ -547,8 +545,6 @@ function buildHydratedAppData(params: {
   let f = [...params.folders];
   let loadedDiaries = [...params.diaries];
 
-  // В реальном режиме дополнительно убираем известные демо-записи.
-  // Это защищает от старых локальных смешанных данных.
   if (params.mode === "user") {
     t = stripKnownDemoTrades(t);
     j = stripKnownDemoJournal(j);
@@ -611,7 +607,6 @@ export default function AppClient() {
   const [isDeleteDiaryModalOpen, setIsDeleteDiaryModalOpen] = useState(false);
 
   const [isBalanceDiaryModalOpen, setIsBalanceDiaryModalOpen] = useState(false);
-  const [balanceEditMode, setBalanceEditMode] = useState<BalanceEditMode>("manual");
   const [balanceValueInput, setBalanceValueInput] = useState("");
   const [balanceCurrencyInput, setBalanceCurrencyInput] = useState("USD");
 
@@ -687,10 +682,6 @@ export default function AppClient() {
     setJournalFolders(localHydrated.folders);
     setDiaries(localHydrated.diaries);
     setActiveDiaryId(localHydrated.activeDiaryId);
-
-    // ВАЖНО: здесь специально нет loadTradesFromSupabase / syncFromSupabase.
-    // Иначе через секунду после обновления страницы старые данные из базы
-    // перезаписывают локальные и смешивают реальные сделки с демо.
   }, []);
 
   useEffect(() => {
@@ -753,13 +744,11 @@ export default function AppClient() {
   const connectionBalance = useMemo(() => sumConnectionBalances(activeConnection), [activeConnection]);
 
   const startBalance = activeDiary?.startBalance ?? 0;
-  const manualBalance = activeDiary?.manualBalance;
 
   const currentBalance = useMemo(() => {
     if (connectionBalance != null) return connectionBalance;
-    if (typeof manualBalance === "number" && Number.isFinite(manualBalance)) return manualBalance;
     return startBalance + diaryPnl;
-  }, [connectionBalance, manualBalance, startBalance, diaryPnl]);
+  }, [connectionBalance, startBalance, diaryPnl]);
 
   const balanceCurrency = activeDiary?.currency || "USD";
 
@@ -768,16 +757,12 @@ export default function AppClient() {
       return `Источник: ${activeConnection.name}`;
     }
 
-    if (typeof manualBalance === "number" && Number.isFinite(manualBalance)) {
-      return "Источник: ручной текущий баланс";
-    }
-
     if (typeof startBalance === "number" && Number.isFinite(startBalance) && startBalance > 0) {
       return "Источник: стартовый баланс + P/L";
     }
 
     return "Источник: P/L";
-  }, [connectionBalance, activeConnection, manualBalance, startBalance]);
+  }, [connectionBalance, activeConnection, startBalance]);
 
   const growthPercent = useMemo(() => {
     if (!startBalance) return 0;
@@ -785,20 +770,15 @@ export default function AppClient() {
     const growthBase =
       connectionBalance != null
         ? connectionBalance - startBalance
-        : typeof manualBalance === "number" && Number.isFinite(manualBalance)
-          ? manualBalance - startBalance
-          : diaryPnl;
+        : diaryPnl;
 
     return (growthBase / startBalance) * 100;
-  }, [startBalance, connectionBalance, manualBalance, diaryPnl]);
+  }, [startBalance, connectionBalance, diaryPnl]);
 
   const equityStartBalance = useMemo(() => {
     if (connectionBalance != null && startBalance > 0) return startBalance;
-    if (typeof manualBalance === "number" && Number.isFinite(manualBalance) && startBalance > 0) {
-      return startBalance;
-    }
     return startBalance > 0 ? startBalance : 0;
-  }, [connectionBalance, manualBalance, startBalance]);
+  }, [connectionBalance, startBalance]);
 
   const switchToUserMode = useCallback(() => {
     saveMode("user");
@@ -938,17 +918,7 @@ export default function AppClient() {
       return;
     }
 
-    const initialMode: BalanceEditMode =
-      typeof activeDiary.manualBalance === "number" && Number.isFinite(activeDiary.manualBalance)
-        ? "manual"
-        : "start";
-
-    setBalanceEditMode(initialMode);
-    setBalanceValueInput(
-      initialMode === "manual"
-        ? String(activeDiary.manualBalance ?? "")
-        : String(activeDiary.startBalance ?? "")
-    );
+    setBalanceValueInput(String(activeDiary.startBalance ?? ""));
     setBalanceCurrencyInput(activeDiary.currency || "USD");
     setIsBalanceDiaryModalOpen(true);
   }, [activeDiary, showNotice]);
@@ -968,19 +938,11 @@ export default function AppClient() {
 
     const currency = balanceCurrencyInput.trim().toUpperCase() || "USD";
 
-    const nextDiaries = updateDiary(
-      diaries,
-      activeDiary.id,
-      balanceEditMode === "manual"
-        ? {
-            manualBalance: parsedBalance,
-            currency,
-          }
-        : {
-            startBalance: parsedBalance,
-            currency,
-          }
-    );
+    const nextDiaries = updateDiary(diaries, activeDiary.id, {
+      startBalance: parsedBalance,
+      manualBalance: undefined,
+      currency,
+    });
 
     void persistDiaries(nextDiaries);
     setIsBalanceDiaryModalOpen(false);
@@ -988,17 +950,11 @@ export default function AppClient() {
     setBalanceCurrencyInput("USD");
     switchToUserMode();
 
-    showNotice(
-      "success",
-      balanceEditMode === "manual"
-        ? `Ручной баланс обновлён: ${fmt(parsedBalance)} ${currency}`
-        : `Стартовый баланс обновлён: ${fmt(parsedBalance)} ${currency}`
-    );
+    showNotice("success", `Стартовый баланс обновлён: ${fmt(parsedBalance)} ${currency}`);
   }, [
     activeDiary,
     balanceValueInput,
     balanceCurrencyInput,
-    balanceEditMode,
     diaries,
     persistDiaries,
     showNotice,
@@ -1748,28 +1704,8 @@ export default function AppClient() {
 
             <div className="grid gap-3">
               <div className="item">
-                <label className="mb-2 block text-sm text-[#8aa6c7]">Режим баланса</label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    className={`btn ${balanceEditMode === "manual" ? "" : "btn-secondary"}`}
-                    onClick={() => setBalanceEditMode("manual")}
-                  >
-                    Ручной текущий баланс
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn ${balanceEditMode === "start" ? "" : "btn-secondary"}`}
-                    onClick={() => setBalanceEditMode("start")}
-                  >
-                    Стартовый баланс
-                  </button>
-                </div>
-              </div>
-
-              <div className="item">
                 <label className="mb-2 block text-sm text-[#8aa6c7]">
-                  {balanceEditMode === "manual" ? "Текущий баланс" : "Стартовый баланс"}
+                  Стартовый баланс
                 </label>
                 <input
                   type="text"
@@ -2443,6 +2379,7 @@ function OverviewView({
 }) {
   const equityRef = useRef<HTMLCanvasElement>(null);
   const weekdayRef = useRef<HTMLCanvasElement>(null);
+  const [showEquityPoints, setShowEquityPoints] = useState(true);
 
   const latestTradeDate = useMemo(() => {
     if (!trades.length) {
@@ -2489,8 +2426,12 @@ function OverviewView({
   useEffect(() => {
     const draw = () => {
       if (equityRef.current) {
-        drawEquityChart(equityRef.current, equityCurve, trades, (trade) =>
-          onOpenTrade(trade.id)
+        drawEquityChart(
+          equityRef.current,
+          equityCurve,
+          trades,
+          (trade) => onOpenTrade(trade.id),
+          showEquityPoints
         );
       }
       if (weekdayRef.current) {
@@ -2505,7 +2446,7 @@ function OverviewView({
       window.clearTimeout(timer);
       window.removeEventListener("resize", draw);
     };
-  }, [equityCurve, trades, onOpenTrade]);
+  }, [equityCurve, trades, onOpenTrade, showEquityPoints]);
 
   const recentTrades = [...trades];
   const calendar = useMemo(
@@ -2782,11 +2723,19 @@ function OverviewView({
 
       <section className="grid gap-5 xl:grid-cols-[1.15fr_0.95fr]">
         <div className="card">
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="m-0 text-lg font-bold">Кривая доходности</h3>
               <p className="mt-1 text-sm text-[#8aa6c7]">Динамика счёта на основе истории сделок</p>
             </div>
+
+            <button
+              type="button"
+              className={`btn ${showEquityPoints ? "" : "btn-secondary"}`}
+              onClick={() => setShowEquityPoints((prev) => !prev)}
+            >
+              {showEquityPoints ? "Скрыть точки" : "Показать точки"}
+            </button>
           </div>
 
           <div className="rounded-[20px] border border-[rgba(56,189,248,.08)] bg-[rgba(8,15,28,.55)] p-3">
@@ -3242,4 +3191,3 @@ function OverviewView({
     </div>
   );
 }
-
